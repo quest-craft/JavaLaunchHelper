@@ -19,18 +19,10 @@ val lwjglNatives = when (OperatingSystem.current()) {
 val inJar by configurations.creating
 
 dependencies {
-    implementation(platform("org.lwjgl:lwjgl-bom:3.2.3"))
+    val lwjglVersion = "2.9.3"
 
-    val parts = listOf(
-            "lwjgl",
-            "lwjgl-opengl",
-            "lwjgl-glfw"
-    )
-
-    for (part in parts) {
-        implementation("org.lwjgl:$part")
-        runtimeOnly("org.lwjgl", part, classifier = lwjglNatives)
-    }
+    implementation("org.lwjgl.lwjgl:lwjgl:$lwjglVersion")
+    //runtimeOnly("org.lwjgl.lwjgl", "lwjgl", lwjglVersion, classifier = lwjglNatives)
 
     // All inJar dependencies are also implementation dependencies
     implementation(inJar)

@@ -1,5 +1,6 @@
 package xyz.znix.graphicstest;
 
+/*
 import org.lwjgl.glfw.GLFW;
 
 // From http://forum.lwjgl.org/index.php?topic=6057.msg32446#msg32446
@@ -107,3 +108,4 @@ public class SyncTimer {
         return updates;
     }
 }
+ */

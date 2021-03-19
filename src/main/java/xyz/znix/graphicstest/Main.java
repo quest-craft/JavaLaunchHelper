@@ -8,21 +8,16 @@ import com.sun.jna.ptr.IntByReference;
 import jopenvr.JOpenVRLibrary.EColorSpace;
 import jopenvr.JOpenVRLibrary.ETextureType;
 import jopenvr.Texture_t;
-import org.lwjgl.Version;
-import org.lwjgl.glfw.GLFWErrorCallback;
-import org.lwjgl.glfw.GLFWVidMode;
-import org.lwjgl.opengl.GL;
+import org.lwjgl.LWJGLException;
+import org.lwjgl.Sys;
+import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.DisplayMode;
 import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GLUtil;
-import org.lwjgl.system.MemoryStack;
 
-import java.nio.IntBuffer;
-
-import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
-import static org.lwjgl.glfw.GLFW.*;
-import static org.lwjgl.opengl.GL42.*;
-import static org.lwjgl.system.MemoryStack.stackPush;
-import static org.lwjgl.system.MemoryUtil.NULL;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL30.*;
+import static org.lwjgl.opengl.GL32.glFramebufferTexture;
+import static org.lwjgl.opengl.GL42.glTexStorage2D;
 
 public class Main {
     public static final boolean USE_VR = false;
@@ -36,81 +31,30 @@ public class Main {
     long frameCount;
 
     public void run() {
-        System.out.println("Hello LWJGL " + Version.getVersion() + "!");
+        System.out.println("Hello LWJGL " + Sys.getVersion() + "!");
 
         init();
         loop();
-
-        // Free the window callbacks and destroy the window
-        glfwFreeCallbacks(window);
-        glfwDestroyWindow(window);
-
-        // Terminate GLFW and free the error callback
-        glfwTerminate();
-        glfwSetErrorCallback(null).free();
     }
 
     private void init() {
-        // Setup an error callback. The default implementation
-        // will print the error message in System.err.
-        GLFWErrorCallback.createPrint(System.err).set();
-
-        // Initialize GLFW. Most GLFW functions will not work before doing this.
-        if (!glfwInit())
-            throw new IllegalStateException("Unable to initialize GLFW");
-
-        // Configure GLFW
-        glfwDefaultWindowHints(); // optional, the current window hints are already the default
-        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE); // the window will stay hidden after creation
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE); // the window will be resizable
-
-        // Create the window
-        window = glfwCreateWindow(300, 300, "Hello World!", NULL, NULL);
-        if (window == NULL)
-            throw new RuntimeException("Failed to create the GLFW window");
-
-        // Setup a key callback. It will be called every time a key is pressed, repeated or released.
-        glfwSetKeyCallback(window, (window, key, scancode, action, mods) -> {
-            if (key == GLFW_KEY_ESCAPE && action == GLFW_RELEASE)
-                glfwSetWindowShouldClose(window, true); // We will detect this in the rendering loop
-        });
-
-        // Get the thread stack and push a new frame
-        try (MemoryStack stack = stackPush()) {
-            IntBuffer pWidth = stack.mallocInt(1); // int*
-            IntBuffer pHeight = stack.mallocInt(1); // int*
-
-            // Get the window size passed to glfwCreateWindow
-            glfwGetWindowSize(window, pWidth, pHeight);
-
-            // Get the resolution of the primary monitor
-            GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-
-            // Center the window
-            glfwSetWindowPos(
-                    window,
-                    (vidmode.width() - pWidth.get(0)) / 2,
-                    (vidmode.height() - pHeight.get(0)) / 2
-            );
-        } // the stack frame is popped automatically
-
-        // Make the OpenGL context current
-        glfwMakeContextCurrent(window);
-        // Enable v-sync
-        glfwSwapInterval(1);
-
-        // Make the window visible
-        glfwShowWindow(window);
-
-        // This line is critical for LWJGL's interoperation with GLFW's
-        // OpenGL context, or any context that is managed externally.
-        // LWJGL detects the context that is current in the current thread,
-        // creates the GLCapabilities instance and makes the OpenGL
-        // bindings available for use.
-        GL.createCapabilities();
-
-        // Get the OpenGL errors
-        GLUtil.setupDebugMessageCallback();
+        try {
+            Display.setTitle("Hello World");
+            DisplayMode mode = null;
+            for (DisplayMode m : Display.getAvailableDisplayModes()) {
+                System.out.println("Mode: " + m);
+                if (m.getWidth() == 480)
+                    mode = m;
+            }
+            if (mode != null) {
+                Display.setDisplayMode(mode);
+            }
+            Display.setFullscreen(false);
+            Display.setResizable(true);
+            Display.create();
+        } catch (LWJGLException e) {
+            throw new RuntimeException(e);
+        }
 
         // Setup VR
         if (USE_VR)
@@ -120,13 +64,11 @@ public class Main {
     }
 
     private void loop() {
-        SyncTimer timer = new SyncTimer(SyncTimer.LWJGL_GLFW);
-
         int i = 0;
 
         // Run the rendering loop until the user has attempted to close
         // the window or has pressed the ESCAPE key.
-        while (!glfwWindowShouldClose(window)) {
+        while (!Display.isCloseRequested()) {
             if (USE_VR)
                 vr.compositor.WaitGetPoses.apply(null, 0, null, 0);
 
@@ -142,15 +84,15 @@ public class Main {
                 drawScene();
             }
 
-            glfwSwapBuffers(window); // swap the color buffers
-
-            // Poll for window events. The key callback above will only be
-            // invoked during this call.
-            glfwPollEvents();
-
             if (!USE_VR) {
                 // No need to sync if the VR compositor is doing that for us
-                timer.sync(60);
+                // Display.sync(60);
+                try {
+                    //noinspection BusyWait
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
             } else {
                 // Submit the textures for both eyes to the runtime
                 for (int eye = 0; eye < 2; eye++) {
@@ -167,8 +109,12 @@ public class Main {
                 }
             }
 
+            Display.update();
+
             frameCount++;
         }
+
+        Display.destroy();
     }
 
     private void drawScene() {
@@ -176,17 +122,23 @@ public class Main {
         int i = (int) (frameCount % max);
         float v = (float) i / max;
 
-        // Set the clear color
+        // Set the clear colour
         glClearColor(0, v, 0.0f, 0.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
+
+        glViewport(0, 0, 1, 1);
+
+        glBegin(GL_TRIANGLES);
+        glColor3f(1, 0, 1);
+        glVertex2f(0, 0);
+        glVertex2f(1, 0);
+        glVertex2f(1, 1);
+        glEnd();
     }
 
     public static void main(String[] args) {
         System.out.println("hello");
-
-        String ver = org.lwjgl.Version.getVersion();
-        System.out.println("version: " + ver);
 
         Main main = new Main();
         main.run();
