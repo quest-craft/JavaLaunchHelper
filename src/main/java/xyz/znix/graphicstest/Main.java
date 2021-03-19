@@ -25,6 +25,7 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
 public class Main {
+    public static final boolean USE_VR = false;
 
     // The window handle
     private long window;
@@ -112,7 +113,9 @@ public class Main {
         GLUtil.setupDebugMessageCallback();
 
         // Setup VR
-        vr = new OpenVR();
+        if (USE_VR)
+            vr = new OpenVR();
+
         eyes = new EyeBuffer[]{new EyeBuffer(), new EyeBuffer()};
     }
 
@@ -124,7 +127,8 @@ public class Main {
         // Run the rendering loop until the user has attempted to close
         // the window or has pressed the ESCAPE key.
         while (!glfwWindowShouldClose(window)) {
-            vr.compositor.WaitGetPoses.apply(null, 0, null, 0);
+            if (USE_VR)
+                vr.compositor.WaitGetPoses.apply(null, 0, null, 0);
 
             // Desktop view
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -144,20 +148,23 @@ public class Main {
             // invoked during this call.
             glfwPollEvents();
 
-            // No need to sync if the VR compositor is doing that for us
-            //timer.sync(60);
+            if (!USE_VR) {
+                // No need to sync if the VR compositor is doing that for us
+                timer.sync(60);
+            } else {
+                // Submit the textures for both eyes to the runtime
+                for (int eye = 0; eye < 2; eye++) {
+                    Texture_t tex = new Texture_t();
+                    tex.eType = ETextureType.ETextureType_TextureType_OpenGL;
+                    tex.eColorSpace = EColorSpace.EColorSpace_ColorSpace_Gamma;
+                    tex.handle = new Pointer(eyes[eye].tex);
+                    tex.write();
 
-            for (int eye = 0; eye < 2; eye++) {
-                Texture_t tex = new Texture_t();
-                tex.eType = ETextureType.ETextureType_TextureType_OpenGL;
-                tex.eColorSpace = EColorSpace.EColorSpace_ColorSpace_Gamma;
-                tex.handle = new Pointer(eyes[eye].tex);
-                tex.write();
+                    vr.compositor.Submit.apply(eye, tex, null, 0);
 
-                vr.compositor.Submit.apply(eye, tex, null, 0);
-
-                // Not exactly my favourite way of handling this, but JNA doesn't let us dispose the memory ourselves
-                // Instead, it'll automatically do it when it's Java representation is GC'd
+                    // Not exactly my favourite way of handling this, but JNA doesn't let us dispose the memory ourselves
+                    // Instead, it'll automatically do it when it's Java representation is GC'd
+                }
             }
 
             frameCount++;
@@ -198,7 +205,12 @@ public class Main {
             // Create the texture
             IntByReference width = new IntByReference();
             IntByReference height = new IntByReference();
-            vr.system.GetRecommendedRenderTargetSize.apply(width, height);
+            if (USE_VR) {
+                vr.system.GetRecommendedRenderTargetSize.apply(width, height);
+            } else {
+                width.setValue(500);
+                height.setValue(600);
+            }
 
             tex = glGenTextures();
 
