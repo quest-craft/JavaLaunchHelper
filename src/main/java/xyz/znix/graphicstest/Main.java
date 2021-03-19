@@ -3,23 +3,36 @@
  */
 package xyz.znix.graphicstest;
 
-import org.lwjgl.*;
-import org.lwjgl.glfw.*;
-import org.lwjgl.opengl.*;
-import org.lwjgl.system.*;
+import com.sun.jna.Pointer;
+import com.sun.jna.ptr.IntByReference;
+import jopenvr.JOpenVRLibrary.EColorSpace;
+import jopenvr.JOpenVRLibrary.ETextureType;
+import jopenvr.Texture_t;
+import org.lwjgl.Version;
+import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GLUtil;
+import org.lwjgl.system.MemoryStack;
 
-import java.nio.*;
+import java.nio.IntBuffer;
 
-import static org.lwjgl.glfw.Callbacks.*;
+import static org.lwjgl.glfw.Callbacks.glfwFreeCallbacks;
 import static org.lwjgl.glfw.GLFW.*;
-import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.system.MemoryStack.*;
-import static org.lwjgl.system.MemoryUtil.*;
+import static org.lwjgl.opengl.GL42.*;
+import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.system.MemoryUtil.NULL;
 
 public class Main {
 
     // The window handle
     private long window;
+
+    private OpenVR vr;
+    private EyeBuffer[] eyes;
+
+    long frameCount;
 
     public void run() {
         System.out.println("Hello LWJGL " + Version.getVersion() + "!");
@@ -87,9 +100,7 @@ public class Main {
 
         // Make the window visible
         glfwShowWindow(window);
-    }
 
-    private void loop() {
         // This line is critical for LWJGL's interoperation with GLFW's
         // OpenGL context, or any context that is managed externally.
         // LWJGL detects the context that is current in the current thread,
@@ -97,6 +108,15 @@ public class Main {
         // bindings available for use.
         GL.createCapabilities();
 
+        // Get the OpenGL errors
+        GLUtil.setupDebugMessageCallback();
+
+        // Setup VR
+        vr = new OpenVR();
+        eyes = new EyeBuffer[]{new EyeBuffer(), new EyeBuffer()};
+    }
+
+    private void loop() {
         SyncTimer timer = new SyncTimer(SyncTimer.LWJGL_GLFW);
 
         int i = 0;
@@ -104,14 +124,19 @@ public class Main {
         // Run the rendering loop until the user has attempted to close
         // the window or has pressed the ESCAPE key.
         while (!glfwWindowShouldClose(window)) {
-            int max = 100;
-            i = (i + 1) % max;
-            float v = (float) i / max;
+            vr.compositor.WaitGetPoses.apply(null, 0, null, 0);
 
-            // Set the clear color
-            glClearColor(0, v, 0.0f, 0.0f);
+            // Desktop view
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            drawScene();
 
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
+            for (EyeBuffer eye : eyes) {
+                glBindFramebuffer(GL_FRAMEBUFFER, eye.frameBuffer);
+                drawScene();
+
+                glBindFramebuffer(GL_FRAMEBUFFER, eye.frameBuffer);
+                drawScene();
+            }
 
             glfwSwapBuffers(window); // swap the color buffers
 
@@ -119,8 +144,35 @@ public class Main {
             // invoked during this call.
             glfwPollEvents();
 
-            timer.sync(60);
+            // No need to sync if the VR compositor is doing that for us
+            //timer.sync(60);
+
+            for (int eye = 0; eye < 2; eye++) {
+                Texture_t tex = new Texture_t();
+                tex.eType = ETextureType.ETextureType_TextureType_OpenGL;
+                tex.eColorSpace = EColorSpace.EColorSpace_ColorSpace_Gamma;
+                tex.handle = new Pointer(eyes[eye].tex);
+                tex.write();
+
+                vr.compositor.Submit.apply(eye, tex, null, 0);
+
+                // Not exactly my favourite way of handling this, but JNA doesn't let us dispose the memory ourselves
+                // Instead, it'll automatically do it when it's Java representation is GC'd
+            }
+
+            frameCount++;
         }
+    }
+
+    private void drawScene() {
+        int max = 100;
+        int i = (int) (frameCount % max);
+        float v = (float) i / max;
+
+        // Set the clear color
+        glClearColor(0, v, 0.0f, 0.0f);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
     }
 
     public static void main(String[] args) {
@@ -131,5 +183,60 @@ public class Main {
 
         Main main = new Main();
         main.run();
+    }
+
+    private class EyeBuffer {
+        int tex;
+        int frameBuffer;
+
+        EyeBuffer() {
+            int err = glGetError();
+            if (err != 0) {
+                throw new RuntimeException("OpenGL pre-failed: " + err);
+            }
+
+            // Create the texture
+            IntByReference width = new IntByReference();
+            IntByReference height = new IntByReference();
+            vr.system.GetRecommendedRenderTargetSize.apply(width, height);
+
+            tex = glGenTextures();
+
+            err = glGetError();
+            if (err != 0) {
+                throw new RuntimeException("OpenGL Failed creating texture: " + err);
+            }
+
+            if (tex == 0) {
+                throw new RuntimeException("glGenTextures returned 0");
+            }
+
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, tex);
+            glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width.getValue(), height.getValue());
+
+            err = glGetError();
+            if (err != 0) {
+                throw new RuntimeException("OpenGL Failed setting texture contents: " + err);
+            }
+
+            // Create the frame buffer
+            frameBuffer = glGenFramebuffers();
+            glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, tex, 0);
+
+            // The depth buffer
+            int depthRenderBuffer = glGenRenderbuffers();
+            glBindRenderbuffer(GL_RENDERBUFFER, depthRenderBuffer);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1024, 768);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderBuffer);
+
+            // Last error check
+            err = glGetError();
+            if (err != 0) {
+                throw new RuntimeException("OpenGL Failed FB: " + err);
+            }
+        }
     }
 }

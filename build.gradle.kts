@@ -30,6 +30,9 @@ dependencies {
         runtimeOnly("org.lwjgl", part, classifier = lwjglNatives)
     }
 
+    // Same version that Vivecraft (at least for 1.16) uses
+    implementation("net.java.dev.jna:jna:4.4.0")
+
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.5.1") // Use JUnit Jupiter API for testing.
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.5.1") // Use JUnit Jupiter Engine for testing.
 }
