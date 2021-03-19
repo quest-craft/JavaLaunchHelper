@@ -67,6 +67,8 @@ public class Main {
     private void loop() {
         int i = 0;
 
+        System.out.println("Display size: " + Display.getWidth() + " " + Display.getHeight());
+
         // Run the rendering loop until the user has attempted to close
         // the window or has pressed the ESCAPE key.
         while (!Display.isCloseRequested()) {
@@ -120,16 +122,28 @@ public class Main {
 
     private void drawScene() {
         // Set the clear colour
-        glClearColor(0, 0, 0.0f, 1.0f);
+        glClearColor(0, (float) Math.sin((float) frameCount / 800) * 0.2f + 0.2f, 0.0f, 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
 
         glEnable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
 
+        // Make up some usable aspect ratio if we have a 0x0 screen, as we do on android
+        // Unless we can get the values passed in by the pojav launcher
+        float aspect;
+        int width = Integer.getInteger("glfwstub.windowWidth", Display.getWidth());
+        int height = Integer.getInteger("glfwstub.windowHeight", Display.getHeight());
+
+        if (width == 0) {
+            aspect = 1;
+        } else {
+            aspect = 1.0f * width / height;
+        }
+
         glLoadIdentity();
         // TODO vary for VR viewports
-        GLU.gluPerspective(90, 1.0f * Display.getWidth() / Display.getHeight(), 0.05f, 100);
+        GLU.gluPerspective(90, aspect, 0.05f, 100);
         // GLU.gluOrtho2D(-1, -1, 1, 1);
 
         glTranslatef(0, 0, -2);
@@ -168,7 +182,7 @@ public class Main {
         glVertex3f(1, 0, 1);
         glVertex3f(0, 0, 1);
         // left
-        glColor3f(1, 0, 1);
+        glColor3f(0, 1, 1);
         glVertex3f(0, 0, 0);
         glVertex3f(0, 1, 0);
         glVertex3f(0, 1, 1);
