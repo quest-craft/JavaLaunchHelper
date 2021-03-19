@@ -23,6 +23,7 @@ dependencies {
 
     implementation("org.lwjgl.lwjgl:lwjgl:$lwjglVersion")
     //runtimeOnly("org.lwjgl.lwjgl", "lwjgl", lwjglVersion, classifier = lwjglNatives)
+    implementation("org.lwjgl.lwjgl:lwjgl_util:$lwjglVersion")
 
     // All inJar dependencies are also implementation dependencies
     implementation(inJar)

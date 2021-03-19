@@ -13,6 +13,7 @@ import org.lwjgl.Sys;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.DisplayMode;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.util.glu.GLU;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL30.*;
@@ -118,22 +119,67 @@ public class Main {
     }
 
     private void drawScene() {
-        int max = 100;
-        int i = (int) (frameCount % max);
-        float v = (float) i / max;
-
         // Set the clear colour
-        glClearColor(0, v, 0.0f, 0.0f);
+        glClearColor(0, 0, 0.0f, 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the framebuffer
 
-        glViewport(0, 0, 1, 1);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
 
-        glBegin(GL_TRIANGLES);
+        glLoadIdentity();
+        // TODO vary for VR viewports
+        GLU.gluPerspective(90, 1.0f * Display.getWidth() / Display.getHeight(), 0.05f, 100);
+        // GLU.gluOrtho2D(-1, -1, 1, 1);
+
+        glTranslatef(0, 0, -2);
+
+        // Spin over time
+        glRotatef(frameCount * 0.8f, 0, 1, 0);
+        glRotatef(frameCount * 0.1f, 1, 0, 0);
+
+        // Translate in by half a unit so the cube is centred
+        glTranslatef(-0.5f, -0.5f, -0.5f);
+
+        glBegin(GL_QUADS);
+
+        // front
+        glColor3f(1, 0, 0);
+        glVertex3f(0, 0, 1);
+        glVertex3f(1, 0, 1);
+        glVertex3f(1, 1, 1);
+        glVertex3f(0, 1, 1);
+        // back
+        glColor3f(0, 1, 0);
+        glVertex3f(0, 0, 0);
+        glVertex3f(1, 0, 0);
+        glVertex3f(1, 1, 0);
+        glVertex3f(0, 1, 0);
+        // top
+        glColor3f(0, 0, 1);
+        glVertex3f(0, 1, 0);
+        glVertex3f(1, 1, 0);
+        glVertex3f(1, 1, 1);
+        glVertex3f(0, 1, 1);
+        // bottom
         glColor3f(1, 0, 1);
-        glVertex2f(0, 0);
-        glVertex2f(1, 0);
-        glVertex2f(1, 1);
+        glVertex3f(0, 0, 0);
+        glVertex3f(1, 0, 0);
+        glVertex3f(1, 0, 1);
+        glVertex3f(0, 0, 1);
+        // left
+        glColor3f(1, 0, 1);
+        glVertex3f(0, 0, 0);
+        glVertex3f(0, 1, 0);
+        glVertex3f(0, 1, 1);
+        glVertex3f(0, 0, 1);
+        // right
+        glColor3f(1, 1, 1);
+        glVertex3f(1, 0, 0);
+        glVertex3f(1, 1, 0);
+        glVertex3f(1, 1, 1);
+        glVertex3f(1, 0, 1);
+
         glEnd();
     }
 
