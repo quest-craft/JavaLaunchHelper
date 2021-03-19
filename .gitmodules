@@ -1,0 +1,3 @@
+[submodule "libs/vivecraft"]
+	path = libs/vivecraft
+	url = https://github.com/jrbudda/Vivecraft_116.git
