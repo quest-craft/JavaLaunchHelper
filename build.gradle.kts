@@ -16,6 +16,8 @@ val lwjglNatives = when (OperatingSystem.current()) {
     else -> throw Error("Unrecognized or unsupported Operating system. Please set \"lwjglNatives\" manually")
 }
 
+val inJar by configurations.creating
+
 dependencies {
     implementation(platform("org.lwjgl:lwjgl-bom:3.2.3"))
 
@@ -30,8 +32,11 @@ dependencies {
         runtimeOnly("org.lwjgl", part, classifier = lwjglNatives)
     }
 
+    // All inJar dependencies are also implementation dependencies
+    implementation(inJar)
+
     // Same version that Vivecraft (at least for 1.16) uses
-    implementation("net.java.dev.jna:jna:4.4.0")
+    inJar("net.java.dev.jna:jna:4.4.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.5.1") // Use JUnit Jupiter API for testing.
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.5.1") // Use JUnit Jupiter Engine for testing.
@@ -45,4 +50,8 @@ application {
 val test by tasks.getting(Test::class) {
     // Use junit platform for unit tests
     useJUnitPlatform()
+}
+
+val jar = tasks.getByName("jar", Jar::class) {
+    from(inJar.map { zipTree(it) })
 }
