@@ -5,12 +5,9 @@ package xyz.znix.graphicstest;
 
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.IntByReference;
-import jopenvr.HmdMatrix34_t;
-import jopenvr.HmdMatrix44_t;
-import jopenvr.JOpenVRLibrary;
-import jopenvr.JOpenVRLibrary.EColorSpace;
+import jopenvr.*;
+import jopenvr.JOpenVRLibrary.*;
 import jopenvr.JOpenVRLibrary.ETextureType;
-import jopenvr.Texture_t;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.Sys;
@@ -37,6 +34,8 @@ public class Main {
 
     long frameCount;
 
+    TrackedDevicePose_t pose;
+
     public void run() {
         System.out.println("Hello LWJGL " + Sys.getVersion() + "!");
 
@@ -45,6 +44,10 @@ public class Main {
     }
 
     private void init() {
+        if (USE_VR) {
+            pose = new TrackedDevicePose_t();
+        }
+
         try {
             Display.setTitle("Hello World");
             DisplayMode mode = null;
@@ -87,7 +90,7 @@ public class Main {
         // the window or has pressed the ESCAPE key.
         while (!Display.isCloseRequested()) {
             if (USE_VR)
-                vr.compositor.WaitGetPoses.apply(null, 0, null, 0);
+                vr.compositor.WaitGetPoses.apply(pose, 1, null, 0);
 
             // Desktop view
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -178,6 +181,13 @@ public class Main {
             glMultMatrix(fb);
         }
         // GLU.gluOrtho2D(-1, -1, 1, 1);
+
+        if (USE_VR && eye != null) {
+            pose.read();
+
+            transformInverseBy(vr.system.GetEyeToHeadTransform.apply(eyeId));
+            transformInverseBy(pose.mDeviceToAbsoluteTracking);
+        }
 
         glTranslatef(0, 0, -2);
 
@@ -339,5 +349,25 @@ public class Main {
         // if ((glGetInteger(GL_CONTEXT_FLAGS) & KHRDebug.GL_CONTEXT_FLAG_DEBUG_BIT) == 0) {
         //     System.out.println("[GL] Warning: A non-debug context may not produce any debug output.");
         // }
+    }
+
+    private void transformInverseBy(HmdMatrix34_t mat) {
+        FloatBuffer fb = BufferUtils.createFloatBuffer(16);
+        // Don't transpose it - OpenVR uses row-major while OpenGL uses column-major, but since this is
+        // the device-to-origin pose we want to invert that - if you lean back, the cube should move forwads
+        // relative to your head, not backwards.
+        // Thus we have to rotate, then translate by the negative head position.
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 3; x++) {
+                int i = x * 4 + y;
+                int ti = x * 4 + y;
+                fb.put(i, mat.m[ti]);
+            }
+        }
+        fb.put(3 * 4 + 3, 1);
+        glMultMatrix(fb);
+
+        //noinspection PointlessArithmeticExpression
+        glTranslatef(-mat.m[4 * 0 + 3], -mat.m[4 * 1 + 3], -mat.m[4 * 2 + 3]);
     }
 }
