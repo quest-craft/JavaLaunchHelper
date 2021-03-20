@@ -48,3 +48,10 @@ val test by tasks.getting(Test::class) {
 val jar = tasks.getByName("jar", Jar::class) {
     from(inJar.map { zipTree(it) })
 }
+
+val fatJar = task("fatJar", Jar::class) {
+    from(jar.source)
+    from(configurations.runtimeClasspath.get().map { zipTree(it) })
+    archiveBaseName.set(jar.archiveBaseName.get() + "-fat")
+    manifest.attributes["Main-Class"] = application.mainClassName
+}

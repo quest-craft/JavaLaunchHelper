@@ -5,23 +5,29 @@ package xyz.znix.graphicstest;
 
 import com.sun.jna.Pointer;
 import com.sun.jna.ptr.IntByReference;
+import jopenvr.HmdMatrix34_t;
+import jopenvr.HmdMatrix44_t;
+import jopenvr.JOpenVRLibrary;
 import jopenvr.JOpenVRLibrary.EColorSpace;
 import jopenvr.JOpenVRLibrary.ETextureType;
 import jopenvr.Texture_t;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.Sys;
-import org.lwjgl.opengl.Display;
-import org.lwjgl.opengl.DisplayMode;
-import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.*;
 import org.lwjgl.util.glu.GLU;
+
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL32.glFramebufferTexture;
-import static org.lwjgl.opengl.GL42.glTexStorage2D;
+import static org.lwjgl.opengl.GL43.GL_DEBUG_OUTPUT;
 
 public class Main {
-    public static final boolean USE_VR = false;
+    public static final boolean USE_VR = true;
 
     // The window handle
     private long window;
@@ -57,6 +63,14 @@ public class Main {
             throw new RuntimeException(e);
         }
 
+        // Log OpenGL errors
+        // Not available on Android
+        try {
+            setupDebugCallback();
+        } catch (NoClassDefFoundError err) {
+            System.err.println("Could not setup OpenGL debug callbacks: " + err);
+        }
+
         // Setup VR
         if (USE_VR)
             vr = new OpenVR();
@@ -77,14 +91,11 @@ public class Main {
 
             // Desktop view
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            drawScene();
+            drawScene(null, -1);
 
             for (EyeBuffer eye : eyes) {
                 glBindFramebuffer(GL_FRAMEBUFFER, eye.frameBuffer);
-                drawScene();
-
-                glBindFramebuffer(GL_FRAMEBUFFER, eye.frameBuffer);
-                drawScene();
+                drawScene(eye, eye == eyes[0] ? 0 : 1);
             }
 
             if (!USE_VR) {
@@ -120,7 +131,7 @@ public class Main {
         Display.destroy();
     }
 
-    private void drawScene() {
+    private void drawScene(EyeBuffer eye, int eyeId) {
         // Set the clear colour
         glClearColor(0, (float) Math.sin((float) frameCount / 800) * 0.2f + 0.2f, 0.0f, 1.0f);
 
@@ -135,15 +146,37 @@ public class Main {
         int width = Integer.getInteger("glfwstub.windowWidth", Display.getWidth());
         int height = Integer.getInteger("glfwstub.windowHeight", Display.getHeight());
 
+        if (eye != null) {
+            width = eye.width;
+            height = eye.height;
+        }
+
         if (width == 0) {
             aspect = 1;
         } else {
             aspect = 1.0f * width / height;
         }
 
+        glViewport(0, 0, width, height);
+
         glLoadIdentity();
         // TODO vary for VR viewports
-        GLU.gluPerspective(90, aspect, 0.05f, 100);
+        if (eye == null || !USE_VR) {
+            GLU.gluPerspective(90, aspect, 0.05f, 100);
+        } else {
+            HmdMatrix44_t.ByValue mat = vr.system.GetProjectionMatrix.apply(eyeId, 0.05f, 100);
+            FloatBuffer fb = BufferUtils.createFloatBuffer(16);
+            // Transpose it
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    int i = x * 4 + y;
+                    int ti = x + y * 4;
+                    fb.put(i, mat.m[ti]);
+                }
+            }
+
+            glMultMatrix(fb);
+        }
         // GLU.gluOrtho2D(-1, -1, 1, 1);
 
         glTranslatef(0, 0, -2);
@@ -195,10 +228,30 @@ public class Main {
         glVertex3f(1, 0, 1);
 
         glEnd();
+
+        // HACK around glfinish rearranging our draws and clears
+        glFinish();
     }
 
     public static void main(String[] args) {
         System.out.println("hello");
+
+        Thread thr = new Thread(() -> {
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println("stacktrace timer up, logging:");
+            for (Map.Entry<Thread, StackTraceElement[]> item : Thread.getAllStackTraces().entrySet()) {
+                System.out.println("Thread: " + item.getKey().getName());
+                for (StackTraceElement st : item.getValue()) {
+                    System.out.println(st);
+                }
+            }
+        });
+        //thr.start();
 
         Main main = new Main();
         main.run();
@@ -208,6 +261,8 @@ public class Main {
         int tex;
         int frameBuffer;
 
+        int width, height;
+
         EyeBuffer() {
             int err = glGetError();
             if (err != 0) {
@@ -215,14 +270,17 @@ public class Main {
             }
 
             // Create the texture
-            IntByReference width = new IntByReference();
-            IntByReference height = new IntByReference();
+            IntByReference widthRef = new IntByReference();
+            IntByReference heightRef = new IntByReference();
             if (USE_VR) {
-                vr.system.GetRecommendedRenderTargetSize.apply(width, height);
+                vr.system.GetRecommendedRenderTargetSize.apply(widthRef, heightRef);
             } else {
-                width.setValue(500);
-                height.setValue(600);
+                widthRef.setValue(500);
+                heightRef.setValue(600);
             }
+
+            width = widthRef.getValue();
+            height = heightRef.getValue();
 
             tex = glGenTextures();
 
@@ -237,7 +295,15 @@ public class Main {
 
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, tex);
-            glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width.getValue(), height.getValue());
+            // glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width.getValue(), height.getValue());
+
+            // This line is copied (almost) directly from vivecraft
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_INT, (java.nio.ByteBuffer) null);
+
+            // This emulates the behaviour of gl4es:
+            // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width.getValue(), height.getValue(), 0, GL_RGBA, GL_INT, (java.nio.ByteBuffer) null);
 
             err = glGetError();
             if (err != 0) {
@@ -253,7 +319,7 @@ public class Main {
             // The depth buffer
             int depthRenderBuffer = glGenRenderbuffers();
             glBindRenderbuffer(GL_RENDERBUFFER, depthRenderBuffer);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1024, 768);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
             glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRenderBuffer);
 
             // Last error check
@@ -261,6 +327,17 @@ public class Main {
             if (err != 0) {
                 throw new RuntimeException("OpenGL Failed FB: " + err);
             }
+
+            int format = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT);
+            System.out.println("Created eye tex: name=" + tex + " fmt=" + format);
         }
+    }
+
+    private void setupDebugCallback() {
+        GL43.glDebugMessageCallback(new KHRDebugCallback());
+        glEnable(GL_DEBUG_OUTPUT);
+        // if ((glGetInteger(GL_CONTEXT_FLAGS) & KHRDebug.GL_CONTEXT_FLAG_DEBUG_BIT) == 0) {
+        //     System.out.println("[GL] Warning: A non-debug context may not produce any debug output.");
+        // }
     }
 }
