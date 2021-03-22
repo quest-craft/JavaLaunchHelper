@@ -1,4 +1,5 @@
 import org.gradle.internal.os.OperatingSystem
+import java.net.URI
 
 plugins {
     java
@@ -7,6 +8,9 @@ plugins {
 
 repositories {
     mavenCentral()
+    maven {
+        url = URI("https://libraries.minecraft.net/")
+    }
 }
 
 @Suppress("INACCESSIBLE_TYPE")
@@ -27,6 +31,11 @@ dependencies {
 
     // All inJar dependencies are also implementation dependencies
     implementation(inJar)
+
+    // The Minecraft launchwrapper which is available at runtime
+    // Implementation is fine for these, since only inJar files are emitted when sent to the device
+    implementation("net.minecraft:launchwrapper:1.12")
+    implementation("org.ow2.asm:asm-debug-all:5.2") // AFAIK has the same ABI but allows easier debugging
 
     // Same version that Vivecraft (at least for 1.16) uses
     inJar("net.java.dev.jna:jna:4.4.0")

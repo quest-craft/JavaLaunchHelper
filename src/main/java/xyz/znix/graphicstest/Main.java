@@ -74,6 +74,8 @@ public class Main {
             System.err.println("Could not setup OpenGL debug callbacks: " + err);
         }
 
+        System.out.println("GL vendor: " + glGetString(GL_VENDOR));
+
         // Setup VR
         if (USE_VR)
             vr = new OpenVR();
