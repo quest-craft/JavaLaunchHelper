@@ -14,17 +14,15 @@ import org.lwjgl.Sys;
 import org.lwjgl.opengl.*;
 import org.lwjgl.util.glu.GLU;
 
-import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL32.glFramebufferTexture;
-import static org.lwjgl.opengl.GL43.GL_DEBUG_OUTPUT;
 
 public class Main {
-    public static final boolean USE_VR = true;
+    public static final boolean USE_VR = System.getenv("QUESTCRAFT_TEST_NOVR") == null;
 
     // The window handle
     private long window;
@@ -33,6 +31,7 @@ public class Main {
     private EyeBuffer[] eyes;
 
     long frameCount;
+    long framerateLastTime = System.nanoTime();
 
     TrackedDevicePose_t pose;
 
@@ -44,6 +43,7 @@ public class Main {
     }
 
     private void init() {
+        System.out.println("Using VR: " + USE_VR);
         if (USE_VR) {
             pose = new TrackedDevicePose_t();
         }
@@ -106,12 +106,12 @@ public class Main {
             if (!USE_VR) {
                 // No need to sync if the VR compositor is doing that for us
                 // Display.sync(60);
-                try {
-                    //noinspection BusyWait
-                    Thread.sleep(10);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+                //try {
+                //noinspection BusyWait
+                // Thread.sleep(10);
+                //} catch (InterruptedException e) {
+                //    throw new RuntimeException(e);
+                //}
             } else {
                 // Submit the textures for both eyes to the runtime
                 for (int eye = 0; eye < 2; eye++) {
@@ -131,6 +131,14 @@ public class Main {
             Display.update();
 
             frameCount++;
+
+            int frameInterval = 100;
+            if (frameCount % frameInterval == 0) {
+                double fpns = (double) frameInterval / (System.nanoTime() - framerateLastTime); // frames per nanosecond
+                double fps = fpns * 1_000_000_000;
+                System.out.println("Framerate: " + fps);
+                framerateLastTime = System.nanoTime();
+            }
         }
 
         Display.destroy();
@@ -248,6 +256,8 @@ public class Main {
     public static void main(String[] args) {
         System.out.println("hello");
 
+        Thread.currentThread().setName("JavaMainThread");
+
         Thread thr = new Thread(() -> {
             try {
                 Thread.sleep(5000);
@@ -346,8 +356,8 @@ public class Main {
     }
 
     private void setupDebugCallback() {
-        GL43.glDebugMessageCallback(new KHRDebugCallback());
-        glEnable(GL_DEBUG_OUTPUT);
+        // GL43.glDebugMessageCallback(new KHRDebugCallback());
+        // glEnable(GL_DEBUG_OUTPUT);
         // if ((glGetInteger(GL_CONTEXT_FLAGS) & KHRDebug.GL_CONTEXT_FLAG_DEBUG_BIT) == 0) {
         //     System.out.println("[GL] Warning: A non-debug context may not produce any debug output.");
         // }

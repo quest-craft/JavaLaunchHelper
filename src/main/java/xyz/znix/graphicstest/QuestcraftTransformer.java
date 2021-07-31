@@ -1,21 +1,35 @@
 package xyz.znix.graphicstest;
 
 import net.minecraft.launchwrapper.IClassTransformer;
-import org.lwjgl.Sys;
-import org.objectweb.asm.*;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+
 public class QuestcraftTransformer implements IClassTransformer {
+    private final Map<String, Consumer<ClassNode>> mappings = new HashMap<>();
+
+    public QuestcraftTransformer() {
+        mappings.put("com.sun.jna.NativeLibrary", this::tweakNativeLibrary);
+        mappings.put("org.vivecraft.utils.InputInjector", this::tweakVivecraftInputInjector);
+    }
+
     @Override
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
-        if (!name.equals("com.sun.jna.NativeLibrary"))
+        Consumer<ClassNode> transform = mappings.get(name);
+        if (transform == null)
             return basicClass;
 
         ClassReader cr = new ClassReader(basicClass);
         ClassNode node = new ClassNode();
         cr.accept(node, 0);
 
-        tweakNativeLibrary(node);
+        transform.accept(node);
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
         // ClassWriter cw = new ClassWriter(0); // Just for debugging
@@ -97,4 +111,27 @@ public class QuestcraftTransformer implements IClassTransformer {
         target.instructions.insertBefore(target.instructions.getFirst(), list);
     }
     */
+
+    private void tweakVivecraftInputInjector(ClassNode node) {
+        for (MethodNode method : node.methods) {
+            if (method.name.equals("checkSupported"))
+                tweakCheckSupported(method);
+        }
+
+        // TESTING
+        // for (int i = node.methods.size() - 1; i >= 0; i--) {
+        //     if (!node.methods.get(i).name.equals("checkSupported"))
+        //         node.methods.remove(i);
+        // }
+    }
+
+    private void tweakCheckSupported(MethodNode method) {
+        InsnList il = new InsnList();
+        il.add(new InsnNode(Opcodes.ICONST_0)); // false
+        il.add(new FieldInsnNode(Opcodes.PUTSTATIC, "org/vivecraft/utils/InputInjector", "supported", "Z"));
+        il.add(new InsnNode(Opcodes.RETURN));
+
+        method.instructions.clear();
+        method.instructions.add(il);
+    }
 }

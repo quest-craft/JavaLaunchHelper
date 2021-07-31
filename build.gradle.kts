@@ -21,6 +21,7 @@ val lwjglNatives = when (OperatingSystem.current()) {
 }
 
 val inJar by configurations.creating
+val inJarOnly by configurations.creating
 
 dependencies {
     val lwjglVersion = "2.9.3"
@@ -31,6 +32,7 @@ dependencies {
 
     // All inJar dependencies are also implementation dependencies
     implementation(inJar)
+    runtimeOnly(inJarOnly)
 
     // The Minecraft launchwrapper which is available at runtime
     // Implementation is fine for these, since only inJar files are emitted when sent to the device
@@ -42,6 +44,15 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.5.1") // Use JUnit Jupiter API for testing.
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.5.1") // Use JUnit Jupiter Engine for testing.
+
+    // Also add PojavLauncher's GLFW stub for debugging
+    // Note we need this in-jar so we can easily modify it without making pojav re-extract it
+    inJarOnly(files("../jre_lwjgl3glfw/build/libs/jre_lwjgl3glfw-3.2.3.jar"))
+    runtimeOnly(files(
+            "../app_pojavlauncher/src/main/assets/components/lwjgl3/lwjgl.jar",
+            "../app_pojavlauncher/src/main/assets/components/lwjgl3/lwjgl-opengl.jar",
+            "../app_pojavlauncher/src/main/assets/components/lwjgl3/jsr305.jar"
+    ))
 }
 
 application {
@@ -55,7 +66,7 @@ val test by tasks.getting(Test::class) {
 }
 
 val jar = tasks.getByName("jar", Jar::class) {
-    from(inJar.map { zipTree(it) })
+    from((inJar + inJarOnly).map { zipTree(it) })
 }
 
 val fatJar = task("fatJar", Jar::class) {
