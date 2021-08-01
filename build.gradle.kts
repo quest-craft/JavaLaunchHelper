@@ -1,5 +1,6 @@
 import org.gradle.internal.os.OperatingSystem
 import java.net.URI
+import java.util.Properties
 
 plugins {
     java
@@ -22,6 +23,17 @@ val lwjglNatives = when (OperatingSystem.current()) {
 
 val inJar by configurations.creating
 val inJarOnly by configurations.creating
+
+var pojavDir = ".." // Set this as required
+val componentsDir = "$pojavDir/app_pojavlauncher/src/main/assets/components"
+
+// If we're build as part of PojavLauncher, one of the dependency files must be compiled first
+if (rootProject.name == "PojavLauncher") {
+    pojavDir = "../.."
+    tasks.getByName("compileJava") {
+        dependsOn(":jre_lwjgl3glfw:jar")
+    }
+}
 
 dependencies {
     val lwjglVersion = "2.9.3"
@@ -47,17 +59,32 @@ dependencies {
 
     // Also add PojavLauncher's GLFW stub for debugging
     // Note we need this in-jar so we can easily modify it without making pojav re-extract it
-    inJarOnly(files("../jre_lwjgl3glfw/build/libs/jre_lwjgl3glfw-3.2.3.jar"))
+    inJarOnly(files("$pojavDir/jre_lwjgl3glfw/build/libs/jre_lwjgl3glfw-3.2.3.jar"))
     runtimeOnly(files(
-            "../app_pojavlauncher/src/main/assets/components/lwjgl3/lwjgl.jar",
-            "../app_pojavlauncher/src/main/assets/components/lwjgl3/lwjgl-opengl.jar",
-            "../app_pojavlauncher/src/main/assets/components/lwjgl3/jsr305.jar"
+            "$componentsDir/lwjgl3/lwjgl.jar",
+            "$componentsDir/lwjgl3/lwjgl-opengl.jar",
+            "$componentsDir/lwjgl3/jsr305.jar"
     ))
 }
 
 application {
     // Define the main class for the application.
     mainClassName = "xyz.znix.graphicstest.Main"
+}
+
+val properties = Properties()
+properties.load(project.rootProject.file("local.properties").inputStream())
+val java8Home = properties.getProperty("java8-home")
+        ?: error("In local.properties, java8-home is not set")
+
+// Compile with Java 8, since that's what's running on the device
+val compileJava: JavaCompile by tasks
+compileJava.options.isFork = true
+compileJava.options.forkOptions.executable = "$java8Home/bin/javac"
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 }
 
 val test by tasks.getting(Test::class) {
